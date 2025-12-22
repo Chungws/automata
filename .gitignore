@@ -1,0 +1,18 @@
+# OCaml/Dune
+_build/
+*.install
+*.merlin
+.merlin
+
+# opam
+_opam/
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store

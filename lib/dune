@@ -1,0 +1,3 @@
+(library
+ (name automata)
+ (public_name automata))
