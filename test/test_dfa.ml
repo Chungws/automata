@@ -24,6 +24,7 @@ let even_zeros_dfa =
       transitions;
     }
 
+(* accepts tests *)
 let test_empty () =
   Alcotest.(check bool) "empty string" true (Dfa.accepts even_zeros_dfa "")
 

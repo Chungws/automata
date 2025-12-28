@@ -1,3 +1,7 @@
 (test
- (name test_automata)
+ (name test_dfa)
+ (libraries automata alcotest))
+
+(test
+ (name test_nfa)
  (libraries automata alcotest))
