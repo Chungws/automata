@@ -2,64 +2,124 @@
 
 ## 개요
 
-기본 정규 표현식을 NFA로 변환하고 문자열 매칭을 수행하는 엔진을 구현합니다.
-Thompson 구성법을 사용하여 정규식을 NFA로 변환합니다.
+POSIX ERE(Extended Regular Expressions) 수준의 정규 표현식 엔진을 두 가지 방식으로 구현합니다:
+
+1. **NFA 기반 엔진** - Thompson 구성법, O(nm) 보장
+2. **백트래킹 엔진** - 백레퍼런스 지원, O(2ⁿ) 최악
+
+두 엔진을 비교하여 오토마타 이론의 한계와 실제 정규식 엔진의 트레이드오프를 이해합니다.
 
 ## 학습 목표
 
 - 정규 표현식과 유한 오토마타의 동치성 이해
 - Thompson 구성법 알고리즘 구현
-- 정규식 파싱의 기초 이해
+- 백트래킹 엔진의 동작 원리와 한계 이해
+- ReDoS(정규식 서비스 거부) 취약점 체험
+
+## 지원 기능
+
+### POSIX ERE 기능 (두 엔진 공통)
+
+| 기능 | 문법 | 설명 | 예시 |
+|------|------|------|------|
+| 리터럴 | `a`, `b` | 문자 그대로 매칭 | `abc` |
+| 임의 문자 | `.` | 개행 제외 아무 문자 | `a.c` → "abc", "aXc" |
+| 선택 | `\|` | OR 연산 | `a\|b` → "a" 또는 "b" |
+| 그룹 | `()` | 그룹핑 | `(ab)+` |
+| 클레이니 스타 | `*` | 0회 이상 | `a*` → "", "a", "aa" |
+| 클레이니 플러스 | `+` | 1회 이상 | `a+` → "a", "aa" |
+| 옵션 | `?` | 0회 또는 1회 | `a?` → "", "a" |
+| 횟수 지정 | `{n}`, `{n,}`, `{n,m}` | 정확한 반복 횟수 | `a{2,4}` → "aa", "aaa", "aaaa" |
+| 문자 클래스 | `[abc]` | 문자 집합 | `[aeiou]` |
+| 범위 | `[a-z]` | 문자 범위 | `[0-9]` |
+| 부정 클래스 | `[^abc]` | 제외 집합 | `[^0-9]` → 숫자 아닌 것 |
+| 앵커 | `^`, `$` | 시작, 끝 | `^abc$` |
+| 이스케이프 | `\` | 특수문자 이스케이프 | `\*`, `\\`, `\.` |
+
+### POSIX 문자 클래스
+
+| 클래스 | 동등 표현 | 설명 |
+|--------|----------|------|
+| `[:alnum:]` | `[a-zA-Z0-9]` | 알파벳 + 숫자 |
+| `[:alpha:]` | `[a-zA-Z]` | 알파벳 |
+| `[:digit:]` | `[0-9]` | 숫자 |
+| `[:lower:]` | `[a-z]` | 소문자 |
+| `[:upper:]` | `[A-Z]` | 대문자 |
+| `[:space:]` | `[ \t\n\r\f\v]` | 공백 문자 |
+| `[:punct:]` | 구두점 | 특수문자 |
+
+사용: `[[:digit:]]` = `[0-9]`
+
+### 백트래킹 엔진 전용 기능
+
+| 기능 | 문법 | 설명 |
+|------|------|------|
+| 캡처 그룹 | `()` | 매칭된 내용 저장 |
+| 백레퍼런스 | `\1` ~ `\9` | 캡처된 그룹 재참조 |
+
+```
+예시: (a+)\1
+매칭: "aa", "aaaa", "aaaaaa" (같은 패턴 반복)
+불매칭: "aaa" (홀수 개)
+```
 
 ## 이론적 배경
 
 ### Kleene의 정리
 
-정규 표현식과 유한 오토마타는 동등한 표현력을 가집니다:
+정규 표현식과 유한 오토마타는 동등한 표현력:
 - 모든 정규 표현식 → NFA로 변환 가능 (Thompson 구성법)
 - 모든 DFA → 정규 표현식으로 변환 가능 (상태 제거법)
 
-### 정규 표현식 문법
+### 백레퍼런스는 왜 정규 언어가 아닌가?
 
-기본 연산자 (우선순위 순):
+```
+패턴: (a+)\1
+언어: { aⁿaⁿ | n ≥ 1 } = { aa, aaaa, aaaaaa, ... }
+```
 
-| 우선순위 | 연산자 | 의미 | 예시 |
-|---------|--------|------|------|
-| 1 (높음) | `*` | 클레이니 스타 (0회 이상) | `a*` |
-| 1 | `+` | 클레이니 플러스 (1회 이상) | `a+` |
-| 1 | `?` | 옵션 (0회 또는 1회) | `a?` |
-| 2 | 연결 | 순차적 결합 | `ab` |
-| 3 (낮음) | `\|` | 선택 (또는) | `a\|b` |
+이 언어를 인식하려면 "a를 몇 개 봤는지" 기억해야 함.
+NFA/DFA는 유한한 상태만 가지므로 무한한 카운트를 기억할 수 없음.
+→ 펌핑 보조정리로 증명 가능
 
-괄호 `()`로 우선순위 변경 가능.
+### 엔진 구현 방식 비교
 
-### Thompson 구성법
+| 특성 | NFA 시뮬레이션 | 백트래킹 |
+|------|---------------|---------|
+| 시간 복잡도 | O(nm) | O(2ⁿ) 최악 |
+| 공간 복잡도 | O(m) | O(n) 스택 |
+| 백레퍼런스 | ❌ | ✅ |
+| ReDoS 취약 | ❌ | ✅ |
+| 사용 엔진 | RE2, Go | PCRE, Python, JS |
+
+n = 입력 길이, m = 패턴 상태 수
+
+---
+
+# Part 1: NFA 기반 엔진
+
+## Thompson 구성법
 
 각 정규식 요소를 NFA 조각(fragment)으로 변환:
 
-**1. 빈 문자열 ε**
-```
-→(start)──ε──→((end))
-```
-
-**2. 단일 문자 'a'**
+### 1. 단일 문자 'a'
 ```
 →(start)──a──→((end))
 ```
 
-**3. 연결 AB**
+### 2. 연결 AB
 ```
 →(A.start)───A───→(A.end)──ε──→(B.start)───B───→((B.end))
 ```
 
-**4. 선택 A|B**
+### 3. 선택 A|B
 ```
           ┌──ε──→(A.start)───A───→(A.end)──ε──┐
 →(start)──┤                                    ├──→((end))
           └──ε──→(B.start)───B───→(B.end)──ε──┘
 ```
 
-**5. 클레이니 스타 A***
+### 4. 클레이니 스타 A*
 ```
               ┌────────ε────────┐
               ↓                 │
@@ -68,490 +128,459 @@ Thompson 구성법을 사용하여 정규식을 NFA로 변환합니다.
     └─────────────────ε────────────────────────┘
 ```
 
-### 예시: (a|b)*abb
-
+### 5. 클레이니 플러스 A+
 ```
-정규식: (a|b)*abb
-
-단계별 구성:
-1. 'a' → NFA(a)
-2. 'b' → NFA(b)
-3. 'a|b' → NFA(a|b)
-4. '(a|b)*' → NFA((a|b)*)
-5. '(a|b)*a' → 연결
-6. '(a|b)*ab' → 연결
-7. '(a|b)*abb' → 연결
+              ┌────────ε────────┐
+              ↓                 │
+→(start)──ε──→(A.start)───A───→(A.end)──ε──→((end))
 ```
+(스킵 경로 없음 - 최소 1회 필수)
 
-## Step-by-Step 구현 가이드
-
-### Step 1: NFA Fragment 구조 설계
-
-**목표**: NFA 조각을 표현하는 데이터 구조 정의
-
-**할 일**:
-1. NFA Fragment 구조 정의
-   - 시작 상태
-   - 종료 상태 (단일 상태로 제한)
-   - 전이들
-2. 고유한 상태 이름 생성 방법 결정
-
-**구조 설계**:
+### 6. 옵션 A?
 ```
-NFAFragment:
-    start_state: State
-    end_state: State
-    transitions: Map<(State, Symbol), Set<State>>
+→(start)──ε──→(A.start)───A───→(A.end)──ε──→((end))
+    │                                          ↑
+    └─────────────────ε────────────────────────┘
 ```
 
-**상태 이름 생성**:
-```
-counter = 0
+## Step-by-Step 구현 가이드 (NFA 엔진)
 
-function new_state():
-    name = "s" + counter
-    counter += 1
-    return name
-```
+### Step 1: AST 정의
 
-### Step 2: 기본 NFA 생성 함수 구현
+**목표**: 정규식을 표현하는 AST(추상 구문 트리) 정의
 
-**목표**: 단일 문자와 ε에 대한 NFA 생성
+```ocaml
+type regex =
+  | Char of char                    (* 단일 문자 *)
+  | Dot                             (* 임의 문자 . *)
+  | CharClass of char_class         (* [abc], [^abc] *)
+  | Concat of regex * regex         (* 연결 *)
+  | Alt of regex * regex            (* 선택 | *)
+  | Star of regex                   (* 클레이니 스타 * *)
+  | Plus of regex                   (* 클레이니 플러스 + *)
+  | Option of regex                 (* 옵션 ? *)
+  | Repeat of regex * int * int option  (* {n,m} *)
+  | Anchor of anchor_type           (* ^, $ *)
+  | Group of regex                  (* 그룹 () *)
+  | Empty                           (* 빈 문자열 *)
 
-**할 일**:
-1. `char_nfa(c)` - 문자 c를 인식하는 NFA
-2. `epsilon_nfa()` - 빈 문자열만 인식하는 NFA
+and char_class = {
+  negated: bool;
+  ranges: (char * char) list;       (* [a-z] → [('a', 'z')] *)
+}
 
-**알고리즘**:
-```
-function char_nfa(c):
-    start = new_state()
-    end = new_state()
-    transitions = {(start, c): {end}}
-    return NFAFragment(start, end, transitions)
-
-function epsilon_nfa():
-    start = new_state()
-    end = new_state()
-    transitions = {(start, ε): {end}}
-    return NFAFragment(start, end, transitions)
+and anchor_type = Start | End
 ```
 
-### Step 3: 연결(Concatenation) 구현
-
-**목표**: 두 NFA 조각을 순차적으로 연결
-
-**할 일**:
-1. `concat(nfa1, nfa2)` 함수 구현
-2. nfa1의 종료 상태에서 nfa2의 시작 상태로 ε-전이 추가
-
-**알고리즘**:
-```
-function concat(nfa1, nfa2):
-    // nfa1의 종료 → nfa2의 시작 연결
-    new_transitions = merge(nfa1.transitions, nfa2.transitions)
-    add_transition(new_transitions, nfa1.end, ε, nfa2.start)
-
-    return NFAFragment(
-        start = nfa1.start,
-        end = nfa2.end,
-        transitions = new_transitions
-    )
-```
-
-**시각화**:
-```
-Before:
-  NFA1: →(s0)──a──→(s1)
-  NFA2: →(s2)──b──→(s3)
-
-After concat(NFA1, NFA2):
-  →(s0)──a──→(s1)──ε──→(s2)──b──→((s3))
-```
-
-### Step 4: 선택(Union) 구현
-
-**목표**: 두 NFA 조각 중 하나를 선택
-
-**할 일**:
-1. `union(nfa1, nfa2)` 함수 구현
-2. 새 시작/종료 상태 생성
-3. ε-전이로 연결
-
-**알고리즘**:
-```
-function union(nfa1, nfa2):
-    start = new_state()
-    end = new_state()
-
-    new_transitions = merge(nfa1.transitions, nfa2.transitions)
-
-    // 새 시작에서 양쪽으로 분기
-    add_transition(new_transitions, start, ε, nfa1.start)
-    add_transition(new_transitions, start, ε, nfa2.start)
-
-    // 양쪽 끝에서 새 종료로 합류
-    add_transition(new_transitions, nfa1.end, ε, end)
-    add_transition(new_transitions, nfa2.end, ε, end)
-
-    return NFAFragment(start, end, new_transitions)
-```
-
-**시각화**:
-```
-         ┌──ε──→(s0)──a──→(s1)──ε──┐
-→(new)───┤                          ├───→((new_end))
-         └──ε──→(s2)──b──→(s3)──ε──┘
-```
-
-### Step 5: 클레이니 스타 구현
-
-**목표**: NFA 조각의 0회 이상 반복
-
-**할 일**:
-1. `star(nfa)` 함수 구현
-2. 새 시작/종료 상태 생성
-3. 루프백 ε-전이와 스킵 ε-전이 추가
-
-**알고리즘**:
-```
-function star(nfa):
-    start = new_state()
-    end = new_state()
-
-    new_transitions = copy(nfa.transitions)
-
-    // 시작 → NFA 시작
-    add_transition(new_transitions, start, ε, nfa.start)
-
-    // 시작 → 종료 (0회 매칭)
-    add_transition(new_transitions, start, ε, end)
-
-    // NFA 종료 → NFA 시작 (반복)
-    add_transition(new_transitions, nfa.end, ε, nfa.start)
-
-    // NFA 종료 → 종료
-    add_transition(new_transitions, nfa.end, ε, end)
-
-    return NFAFragment(start, end, new_transitions)
-```
-
-**시각화**:
-```
-           ┌────────ε────────┐
-           ↓                 │
-→(start)──ε──→(s0)──a──→(s1)─┴─ε──→((end))
-    │                                 ↑
-    └─────────────ε───────────────────┘
-```
-
-### Step 6: 플러스와 옵션 구현
-
-**목표**: `+`와 `?` 연산자 구현
-
-**할 일**:
-1. `plus(nfa)` - 1회 이상 반복
-2. `option(nfa)` - 0회 또는 1회
-
-**알고리즘**:
-```
-function plus(nfa):
-    // A+ = AA* (A 다음에 A*)
-    return concat(nfa, star(copy(nfa)))
-
-    // 또는 직접 구현: star와 비슷하지만 스킵 ε-전이 없음
-
-function option(nfa):
-    // A? = A|ε
-    return union(nfa, epsilon_nfa())
-
-    // 또는 직접 구현: 시작→종료 ε-전이만 추가
-```
-
-### Step 7: 정규식 파싱 - 토큰화
+### Step 2: 토크나이저 구현
 
 **목표**: 정규식 문자열을 토큰 리스트로 변환
 
-**할 일**:
-1. 특수 문자 식별: `|`, `*`, `+`, `?`, `(`, `)`
-2. 이스케이프 처리: `\*`, `\\` 등
-3. 일반 문자와 구분
-
-**토큰 종류**:
-```
-CHAR      - 일반 문자 (a, b, 1, 2, ...)
-STAR      - *
-PLUS      - +
-QUESTION  - ?
-PIPE      - |
-LPAREN    - (
-RPAREN    - )
+```ocaml
+type token =
+  | TChar of char
+  | TDot
+  | TStar | TPlus | TQuestion
+  | TPipe
+  | TLParen | TRParen
+  | TLBracket | TRBracket
+  | TCaret | TDollar
+  | TLBrace | TRBrace
+  | TBackslash
+  | TEOF
 ```
 
-**예시**:
+**처리할 것들**:
+- 이스케이프: `\*`, `\\`, `\n`, `\t`
+- POSIX 클래스: `[:digit:]`
+- 수량자: `{n}`, `{n,}`, `{n,m}`
+
+### Step 3: 파서 구현
+
+**목표**: 토큰을 AST로 변환 (재귀 하강 파싱)
+
+**문법** (우선순위 낮은 것부터):
 ```
-입력: "(a|b)*abb"
-출력: [LPAREN, CHAR(a), PIPE, CHAR(b), RPAREN, STAR, CHAR(a), CHAR(b), CHAR(b)]
-```
-
-### Step 8: 정규식 파싱 - 암묵적 연결 처리
-
-**목표**: 연결 연산자를 명시적으로 삽입
-
-정규식에서 연결은 암묵적입니다 (`ab`는 `a·b`). 파싱을 쉽게 하기 위해 명시적 연결 토큰을 삽입합니다.
-
-**규칙**: 다음 토큰 쌍 사이에 CONCAT 삽입:
-```
-(CHAR, CHAR), (CHAR, LPAREN), (RPAREN, CHAR),
-(RPAREN, LPAREN), (STAR, CHAR), (STAR, LPAREN),
-(PLUS, CHAR), (PLUS, LPAREN), (QUESTION, CHAR), (QUESTION, LPAREN)
-```
-
-**예시**:
-```
-입력: [CHAR(a), CHAR(b)]
-출력: [CHAR(a), CONCAT, CHAR(b)]
-
-입력: [LPAREN, CHAR(a), RPAREN, CHAR(b)]
-출력: [LPAREN, CHAR(a), RPAREN, CONCAT, CHAR(b)]
+regex    → alt
+alt      → concat ('|' concat)*
+concat   → repeat+
+repeat   → atom ('*' | '+' | '?' | '{n,m}')?
+atom     → char | '.' | class | '(' regex ')' | anchor
+class    → '[' '^'? (char | range)+ ']'
 ```
 
-### Step 9: 정규식 파싱 - 중위→후위 변환
+### Step 4: NFA Fragment 구조
 
-**목표**: 연산자 우선순위를 처리하기 위해 후위 표기법으로 변환
+**목표**: NFA 조각을 표현하는 데이터 구조
 
-**알고리즘**: Shunting-yard 알고리즘
+```ocaml
+type state = string
 
-**연산자 우선순위**:
-```
-STAR, PLUS, QUESTION: 3 (높음)
-CONCAT: 2
-PIPE: 1 (낮음)
-```
+type nfa_fragment = {
+  start: state;
+  accept: state;
+  transitions: (state * char option * state) list;
+}
 
-**알고리즘**:
-```
-function to_postfix(tokens):
-    output = []
-    operator_stack = []
-
-    for token in tokens:
-        if token is CHAR:
-            output.append(token)
-        else if token is LPAREN:
-            operator_stack.push(token)
-        else if token is RPAREN:
-            while top(operator_stack) ≠ LPAREN:
-                output.append(operator_stack.pop())
-            operator_stack.pop()  // LPAREN 제거
-        else:  // 연산자
-            while (operator_stack not empty and
-                   top(operator_stack) ≠ LPAREN and
-                   precedence(top) >= precedence(token)):
-                output.append(operator_stack.pop())
-            operator_stack.push(token)
-
-    while operator_stack not empty:
-        output.append(operator_stack.pop())
-
-    return output
+(* 고유 상태 이름 생성 *)
+let counter = ref 0
+let new_state () =
+  let n = !counter in
+  counter := n + 1;
+  "s" ^ string_of_int n
 ```
 
-**예시**:
-```
-입력 (중위): a | b * c
-       = CHAR(a) PIPE CHAR(b) CONCAT CHAR(c) STAR
-후위 변환: CHAR(a) CHAR(b) CHAR(c) STAR CONCAT PIPE
-       = a b c * · |
-```
+### Step 5: AST → NFA 변환
 
-### Step 10: 후위 표기법으로 NFA 구축
+**목표**: 각 AST 노드를 NFA fragment로 변환
 
-**목표**: 후위 표기법의 정규식을 NFA로 변환
-
-**알고리즘**:
-```
-function postfix_to_nfa(postfix_tokens):
-    stack = []
-
-    for token in postfix_tokens:
-        if token is CHAR(c):
-            stack.push(char_nfa(c))
-
-        else if token is CONCAT:
-            nfa2 = stack.pop()
-            nfa1 = stack.pop()
-            stack.push(concat(nfa1, nfa2))
-
-        else if token is PIPE:
-            nfa2 = stack.pop()
-            nfa1 = stack.pop()
-            stack.push(union(nfa1, nfa2))
-
-        else if token is STAR:
-            nfa = stack.pop()
-            stack.push(star(nfa))
-
-        else if token is PLUS:
-            nfa = stack.pop()
-            stack.push(plus(nfa))
-
-        else if token is QUESTION:
-            nfa = stack.pop()
-            stack.push(option(nfa))
-
-    return stack.pop()  // 최종 NFA
+```ocaml
+let rec ast_to_nfa = function
+  | Char c -> char_nfa c
+  | Dot -> dot_nfa ()
+  | CharClass cc -> char_class_nfa cc
+  | Concat (a, b) -> concat_nfa (ast_to_nfa a) (ast_to_nfa b)
+  | Alt (a, b) -> alt_nfa (ast_to_nfa a) (ast_to_nfa b)
+  | Star a -> star_nfa (ast_to_nfa a)
+  | Plus a -> plus_nfa (ast_to_nfa a)
+  | Option a -> option_nfa (ast_to_nfa a)
+  | Repeat (a, n, m) -> repeat_nfa (ast_to_nfa a) n m
+  | ...
 ```
 
-### Step 11: 매칭 함수 구현
+### Step 6: Fragment → 완전한 NFA 변환
 
-**목표**: 정규식과 문자열의 매칭 여부 판정
+**목표**: Fragment를 기존 Nfa 모듈과 호환되는 형태로 변환
 
-**할 일**:
-1. 정규식을 NFA로 변환
-2. Project 2의 NFA 시뮬레이터로 문자열 처리
-3. 수락 여부 반환
-
-**알고리즘**:
-```
-function match(pattern, text):
-    nfa = regex_to_nfa(pattern)
-    return nfa.accepts(text)
-
-function regex_to_nfa(pattern):
-    tokens = tokenize(pattern)
-    tokens_with_concat = insert_concat(tokens)
-    postfix = to_postfix(tokens_with_concat)
-    return postfix_to_nfa(postfix)
+```ocaml
+let fragment_to_nfa fragment alphabet =
+  (* 기존 Nfa.t 타입으로 변환 *)
+  ...
 ```
 
-### Step 12: 전체 매칭 vs 부분 매칭
+### Step 7: 매칭 함수
 
-**목표**: 전체 문자열 매칭과 부분 문자열 검색 구분
+**목표**: 정규식 문자열 → 매칭 결과
 
-**전체 매칭** (현재 구현):
-```
-match("ab", "ab")   → True
-match("ab", "cab")  → False
-match("ab", "abc")  → False
-```
+```ocaml
+let compile pattern =
+  let tokens = tokenize pattern in
+  let ast = parse tokens in
+  let fragment = ast_to_nfa ast in
+  fragment_to_nfa fragment
 
-**부분 매칭** (search):
-```
-search("ab", "cab")  → True (위치 1에서 발견)
-search("ab", "abc")  → True (위치 0에서 발견)
-```
-
-**부분 매칭 구현**:
-```
-function search(pattern, text):
-    // 방법 1: 패턴을 .*pattern.*으로 감싸기
-    full_pattern = ".*(" + pattern + ").*"
-    return match(full_pattern, text)
-
-    // 방법 2: 모든 시작 위치에서 시도
-    for i in range(len(text)):
-        if match(pattern, text[i:]):
-            return True
-    return False
+let matches pattern text =
+  let nfa = compile pattern in
+  Nfa.accepts nfa text
 ```
 
-## 추가 기능 (선택)
+---
 
-### 문자 클래스 지원
+# Part 2: 백트래킹 엔진
 
-```
-[abc]  → a|b|c
-[a-z]  → a|b|c|...|z
-[^ab]  → a,b를 제외한 모든 문자
-.      → 임의의 단일 문자
-```
+## 개요
 
-### 앵커 지원
+백트래킹 엔진은 NFA 시뮬레이션 대신 재귀적 탐색을 사용합니다.
+캡처 그룹과 백레퍼런스를 지원하지만, 최악의 경우 지수 시간이 걸립니다.
+
+## 백트래킹 알고리즘
 
 ```
-^  → 문자열 시작
-$  → 문자열 끝
+function match(pattern, text, pos, captures):
+    if pattern is empty:
+        return pos  # 매칭 성공
+
+    if pattern is Char(c):
+        if text[pos] == c:
+            return match(rest(pattern), text, pos+1, captures)
+        else:
+            return FAIL  # 백트래킹
+
+    if pattern is Star(a):
+        # 그리디: 최대한 많이 매칭 시도
+        for count in range(max_possible, -1, -1):
+            result = try_match(a, count times, then rest)
+            if result != FAIL:
+                return result
+        return FAIL
+
+    if pattern is Group(n, a):
+        start_pos = pos
+        result = match(a, text, pos, captures)
+        if result != FAIL:
+            captures[n] = text[start_pos:result]
+            return match(rest(pattern), text, result, captures)
+        return FAIL
+
+    if pattern is Backref(n):
+        captured = captures[n]
+        if text[pos:].startswith(captured):
+            return match(rest(pattern), text, pos + len(captured), captures)
+        return FAIL
 ```
 
-### 캡처 그룹
+## Step-by-Step 구현 가이드 (백트래킹 엔진)
+
+### Step 1: 확장된 AST
+
+```ocaml
+type regex_bt =
+  | (* NFA와 동일한 것들 *)
+  | CaptureGroup of int * regex_bt  (* 캡처 그룹 *)
+  | Backref of int                  (* 백레퍼런스 \1-\9 *)
+```
+
+### Step 2: 매칭 상태
+
+```ocaml
+type match_state = {
+  pos: int;                         (* 현재 위치 *)
+  captures: (int * int) IntMap.t;   (* 그룹 번호 → (시작, 끝) *)
+}
+```
+
+### Step 3: 백트래킹 매처
+
+```ocaml
+let rec try_match regex text state =
+  match regex with
+  | Empty -> Some state
+
+  | Char c ->
+      if state.pos < String.length text && text.[state.pos] = c then
+        Some { state with pos = state.pos + 1 }
+      else
+        None  (* 백트래킹 *)
+
+  | Concat (a, b) ->
+      (match try_match a text state with
+       | Some state' -> try_match b text state'
+       | None -> None)
+
+  | Alt (a, b) ->
+      (match try_match a text state with
+       | Some _ as result -> result
+       | None -> try_match b text state)  (* 백트래킹 *)
+
+  | Star a ->
+      try_star a regex text state
+
+  | Backref n ->
+      let (start_pos, end_pos) = IntMap.find n state.captures in
+      let captured = String.sub text start_pos (end_pos - start_pos) in
+      if String.sub text state.pos (String.length captured) = captured then
+        Some { state with pos = state.pos + String.length captured }
+      else
+        None
+
+  | ...
+```
+
+### Step 4: 그리디 vs 논그리디
+
+```ocaml
+(* 그리디: 최대한 많이 매칭 후 필요시 백트래킹 *)
+let rec try_star_greedy inner rest text state =
+  (* 먼저 더 매칭 시도 *)
+  match try_match inner text state with
+  | Some state' ->
+      (match try_star_greedy inner rest text state' with
+       | Some _ as result -> result
+       | None -> try_match rest text state)  (* 백트래킹 *)
+  | None ->
+      try_match rest text state
+
+(* 논그리디 (*?): 최소한만 매칭 *)
+let rec try_star_lazy inner rest text state =
+  (* 먼저 rest 시도 *)
+  match try_match rest text state with
+  | Some _ as result -> result
+  | None ->
+      match try_match inner text state with
+      | Some state' -> try_star_lazy inner rest text state'
+      | None -> None
+```
+
+---
+
+# Part 3: 비교 실험
+
+## ReDoS 테스트
+
+```ocaml
+(* 악명 높은 ReDoS 패턴 *)
+let redos_pattern = "(a+)+$"
+let evil_input n = String.make n 'a' ^ "!"
+
+(* 테스트 *)
+let () =
+  for n = 10 to 30 do
+    let input = evil_input n in
+
+    (* NFA 엔진 - 항상 빠름 *)
+    let t1 = time (fun () -> Regex_nfa.matches redos_pattern input) in
+
+    (* 백트래킹 엔진 - 지수적으로 느려짐 *)
+    let t2 = time (fun () -> Regex_bt.matches redos_pattern input) in
+
+    Printf.printf "n=%d: NFA=%.3fs, BT=%.3fs\n" n t1 t2
+  done
+```
+
+예상 출력:
+```
+n=10: NFA=0.001s, BT=0.001s
+n=15: NFA=0.001s, BT=0.032s
+n=20: NFA=0.001s, BT=1.024s
+n=25: NFA=0.001s, BT=32.768s
+n=30: NFA=0.001s, BT=timeout
+```
+
+## 기능 테스트
+
+```ocaml
+let test_cases = [
+  (* 기본 *)
+  ("a", "a", true);
+  ("a", "b", false);
+  ("abc", "abc", true);
+
+  (* 메타문자 *)
+  ("a.c", "abc", true);
+  ("a.c", "aXc", true);
+  ("a.c", "ac", false);
+
+  (* 수량자 *)
+  ("a*", "", true);
+  ("a*", "aaa", true);
+  ("a+", "", false);
+  ("a+", "aaa", true);
+  ("a?", "", true);
+  ("a?", "a", true);
+  ("a{2,4}", "aa", true);
+  ("a{2,4}", "aaaaa", false);
+
+  (* 문자 클래스 *)
+  ("[abc]", "b", true);
+  ("[^abc]", "d", true);
+  ("[a-z]", "m", true);
+  ("[[:digit:]]", "5", true);
+
+  (* 앵커 *)
+  ("^abc", "abc", true);
+  ("^abc", "xabc", false);
+  ("abc$", "abc", true);
+  ("abc$", "abcx", false);
+
+  (* 복합 *)
+  ("(a|b)*abb", "aabb", true);
+  ("(a|b)*abb", "abb", true);
+  ("(a|b)*abb", "ab", false);
+
+  (* 백레퍼런스 - 백트래킹 전용 *)
+  ("(a+)\\1", "aa", true);
+  ("(a+)\\1", "aaaa", true);
+  ("(a+)\\1", "aaa", false);
+]
+```
+
+---
+
+## 파일 구조
 
 ```
-(ab)+  → 캡처 그룹
-(?:ab)+  → 비캡처 그룹
+lib/
+├── regex_ast.ml       # AST 정의
+├── regex_lexer.ml     # 토크나이저
+├── regex_parser.ml    # 파서
+├── regex_nfa.ml       # NFA 기반 엔진
+├── regex_bt.ml        # 백트래킹 엔진
+└── regex.ml           # 통합 인터페이스
+
+test/
+└── test_regex.ml      # 테스트
 ```
 
-## 추가 연습 문제
+## 구현 순서
 
-### 연습 1: 정규식 테스트
+### Phase 1: 기본 NFA 엔진
+1. AST 정의
+2. 기본 토크나이저 (리터럴, `*`, `+`, `?`, `|`, `()`)
+3. 파서
+4. Thompson 구성법 (기본 연산자)
+5. 매칭 함수
 
-다음 정규식들을 구현하고 테스트하세요:
+### Phase 2: POSIX ERE 확장
+6. 문자 클래스 `[abc]`, `[a-z]`, `[^abc]`
+7. POSIX 클래스 `[:digit:]`
+8. 수량자 `{n,m}`
+9. 앵커 `^`, `$`
+10. 임의 문자 `.`
 
-1. `a*b*` - 0개 이상의 a 다음 0개 이상의 b
-2. `(ab)+` - "ab"의 1회 이상 반복
-3. `a?b+c*` - 옵션 a, 필수 b들, 옵션 c들
+### Phase 3: 백트래킹 엔진
+11. 백트래킹 매처 기본
+12. 캡처 그룹
+13. 백레퍼런스 `\1`-`\9`
+14. 그리디/논그리디
 
-### 연습 2: NFA 상태 수 분석
+### Phase 4: 비교 및 테스트
+15. ReDoS 실험
+16. 성능 벤치마크
+17. 종합 테스트
 
-다음 정규식의 NFA 상태 수를 예측하고 확인하세요:
-- `a`
-- `a|b`
-- `a*`
-- `(a|b)*`
-
-### 연습 3: 성능 비교
-
-1. NFA 직접 시뮬레이션
-2. NFA→DFA 변환 후 시뮬레이션
-
-두 방식의 성능을 다양한 패턴과 입력으로 비교하세요.
+---
 
 ## 디버깅 팁
 
 ### 흔한 실수
 
-1. **암묵적 연결 누락**
-   - `ab`를 `a`와 `b` 두 개의 분리된 NFA로 처리
+1. **연산자 우선순위 오류**
+   - `a|bc`는 `a|(bc)`이지 `(a|b)c`가 아님
 
-2. **연산자 우선순위 오류**
-   - `a|bc`를 `(a|b)c`로 처리 (올바른 것: `a|(bc)`)
+2. **앵커 처리 누락**
+   - `^`는 위치만 체크, 문자 소비 안 함
 
-3. **후위 변환 오류**
-   - 스택 연산 순서 실수
+3. **문자 클래스 범위**
+   - `[a-z]`에서 `-`의 위치에 따른 해석
 
-### 단계별 검증
+4. **이스케이프 처리**
+   - `\\`는 리터럴 백슬래시
+
+### 단계별 디버깅
 
 ```
 입력: "(a|b)*c"
 
-1. 토큰화 확인:
-   [LPAREN, CHAR(a), PIPE, CHAR(b), RPAREN, STAR, CHAR(c)]
+1. 토큰화:
+   [LParen, Char 'a', Pipe, Char 'b', RParen, Star, Char 'c']
 
-2. 연결 삽입 확인:
-   [LPAREN, CHAR(a), PIPE, CHAR(b), RPAREN, STAR, CONCAT, CHAR(c)]
+2. AST:
+   Concat(Star(Alt(Char 'a', Char 'b')), Char 'c')
 
-3. 후위 변환 확인:
-   [CHAR(a), CHAR(b), PIPE, STAR, CHAR(c), CONCAT]
+3. NFA 상태:
+   s0 -ε→ s1 -a→ s2 -ε→ s5
+   s0 -ε→ s3 -b→ s4 -ε→ s5
+   s5 -ε→ s0 (루프백)
+   s5 -ε→ s6 -c→ s7 (종료)
+   s0 -ε→ s6 (스킵)
 
-4. NFA 구축 확인:
-   - 상태와 전이가 예상대로인지 확인
-
-5. 매칭 테스트:
-   - "c" → True
-   - "ac" → True
-   - "abc" → True
-   - "a" → False
+4. 매칭 테스트:
+   "c"   → ✓ (스킵 경로)
+   "ac"  → ✓
+   "abc" → ✓
+   "a"   → ✗
 ```
-
-## 다음 단계
-
-이 프로젝트를 완료했다면:
-1. 정규식의 한계 학습 (aⁿbⁿ 같은 비정규 언어)
-2. 백트래킹 vs NFA 시뮬레이션 방식 비교
-3. [Project 5: Lexer Generator](./05-lexer.md)로 진행
 
 ## 참고 자료
 
-- Sipser, Chapter 1.3: Regular Expressions
 - Thompson, K. (1968). "Regular Expression Search Algorithm"
 - Cox, R. "Regular Expression Matching Can Be Simple And Fast"
+- Sipser, Chapter 1.3: Regular Expressions
+- POSIX.2 (IEEE Std 1003.2) - Regular Expressions
+
+## 다음 단계
+
+이 프로젝트 완료 후:
+1. [Project 5: Lexer Generator](./05-lexer.md)로 진행
+2. DFA 최소화 알고리즘 추가 (선택)
+3. 정규식 → DFA 직접 변환 (선택)
