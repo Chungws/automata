@@ -5,3 +5,7 @@
 (test
  (name test_nfa)
  (libraries automata alcotest))
+
+(test
+ (name test_nfa_to_dfa)
+ (libraries automata alcotest))
