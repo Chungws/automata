@@ -9,3 +9,11 @@
 (test
  (name test_nfa_to_dfa)
  (libraries automata alcotest))
+
+(test
+ (name test_regex_parser)
+ (libraries automata alcotest fmt))
+
+(test
+ (name test_regex_nfa)
+ (libraries automata alcotest))
