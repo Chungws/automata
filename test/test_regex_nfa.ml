@@ -124,7 +124,36 @@ let test_char_class () =
   (* literal ] and - at special positions *)
   Alcotest.(check bool) "[]a] matches ]" true (Regex.matches "[]a]" "]");
   Alcotest.(check bool) "[-a] matches -" true (Regex.matches "[-a]" "-");
-  Alcotest.(check bool) "[a-] matches -" true (Regex.matches "[a-]" "-")
+  Alcotest.(check bool) "[a-] matches -" true (Regex.matches "[a-]" "-");
+  (* POSIX character classes *)
+  Alcotest.(check bool) "[[:digit:]] matches 5" true (Regex.matches "[[:digit:]]" "5");
+  Alcotest.(check bool) "[[:digit:]] not matches a" false (Regex.matches "[[:digit:]]" "a");
+  Alcotest.(check bool) "[[:alpha:]] matches z" true (Regex.matches "[[:alpha:]]" "z");
+  Alcotest.(check bool) "[[:alpha:]] matches Z" true (Regex.matches "[[:alpha:]]" "Z");
+  Alcotest.(check bool) "[[:alpha:]] not matches 5" false (Regex.matches "[[:alpha:]]" "5");
+  Alcotest.(check bool) "[[:alnum:]] matches a" true (Regex.matches "[[:alnum:]]" "a");
+  Alcotest.(check bool) "[[:alnum:]] matches 9" true (Regex.matches "[[:alnum:]]" "9");
+  Alcotest.(check bool) "[[:lower:]] matches a" true (Regex.matches "[[:lower:]]" "a");
+  Alcotest.(check bool) "[[:lower:]] not matches A" false (Regex.matches "[[:lower:]]" "A");
+  Alcotest.(check bool) "[[:upper:]] matches A" true (Regex.matches "[[:upper:]]" "A");
+  Alcotest.(check bool) "[[:upper:]] not matches a" false (Regex.matches "[[:upper:]]" "a");
+  Alcotest.(check bool) "[[:space:]] matches space" true (Regex.matches "[[:space:]]" " ");
+  Alcotest.(check bool) "[[:space:]] matches tab" true (Regex.matches "[[:space:]]" "\t");
+  Alcotest.(check bool) "[[:punct:]] matches !" true (Regex.matches "[[:punct:]]" "!");
+  Alcotest.(check bool) "[[:punct:]] matches @" true (Regex.matches "[[:punct:]]" "@");
+  (* POSIX with negation *)
+  Alcotest.(check bool) "[^[:digit:]] matches a" true (Regex.matches "[^[:digit:]]" "a");
+  Alcotest.(check bool) "[^[:digit:]] not matches 5" false (Regex.matches "[^[:digit:]]" "5");
+  (* POSIX combined with other chars *)
+  Alcotest.(check bool) "[[:digit:]abc] matches 5" true (Regex.matches "[[:digit:]abc]" "5");
+  Alcotest.(check bool) "[[:digit:]abc] matches a" true (Regex.matches "[[:digit:]abc]" "a");
+  (* POSIX with quantifiers *)
+  Alcotest.(check bool) "[[:digit:]]+ matches 123" true (Regex.matches "[[:digit:]]+" "123");
+  Alcotest.(check bool) "[[:alpha:]]+ matches hello" true (Regex.matches "[[:alpha:]]+" "hello");
+  (* POSIX edge cases: multiple classes *)
+  Alcotest.(check bool) "[[:digit:][:alpha:]] matches 5" true (Regex.matches "[[:digit:][:alpha:]]" "5");
+  Alcotest.(check bool) "[[:digit:][:alpha:]] matches a" true (Regex.matches "[[:digit:][:alpha:]]" "a");
+  Alcotest.(check bool) "[[:digit:][:alpha:]] not matches !" false (Regex.matches "[[:digit:][:alpha:]]" "!")
 
 let test_escape () =
   (* escaped metacharacters *)

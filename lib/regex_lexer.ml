@@ -26,6 +26,18 @@ let char_to_tok ch =
   | '$' -> TDollar
   | ch -> TChar ch
 
+let range start_char end_char =
+  List.init
+    (Char.code end_char - Char.code start_char + 1)
+    (fun i -> Char.chr (Char.code start_char + i))
+
+let digits = range '0' '9'
+let lowers = range 'a' 'z'
+let uppers = range 'A' 'Z'
+let spaces = [ ' '; '\t'; '\n'; '\r'; '\x0c'; '\x0b' ]
+let puncts = range '!' '/' @ range ':' '@' @ range '[' '`' @ range '{' '~'
+let is_digit ch = ch >= '0' && ch <= '9'
+
 let escape_char ch =
   match ch with 'n' -> '\n' | 't' -> '\t' | 'r' -> '\r' | c -> c
 
@@ -36,10 +48,27 @@ let parse_escape ch =
       TChar (escape_char ch)
   | _ -> failwith "Invalid Escape"
 
-let range start_char end_char =
-  List.init
-    (Char.code end_char - Char.code start_char + 1)
-    (fun i -> Char.chr (Char.code start_char + i))
+let parse_posix_class_name chars =
+  let rec loop acc chars =
+    match chars with
+    | ch :: ':' :: ']' :: rest -> (List.rev (ch :: acc), rest)
+    | ch :: rest -> loop (ch :: acc) rest
+    | _ -> failwith "Invalid char class"
+  in
+  let collected, rest = loop [] chars in
+  let str = collected |> List.to_seq |> String.of_seq in
+  (str, rest)
+
+let posix_class_chars name =
+  match name with
+  | "digit" -> digits
+  | "alpha" -> lowers @ uppers
+  | "alnum" -> digits @ lowers @ uppers
+  | "lower" -> lowers
+  | "upper" -> uppers
+  | "space" -> spaces
+  | "punct" -> puncts
+  | _ -> failwith ("Unknown POSIX class: " ^ name)
 
 let parse_char_class chars =
   let negate, chars' =
@@ -57,13 +86,15 @@ let parse_char_class chars =
     | ']' :: rest -> (acc, rest)
     | '\\' :: next :: rest -> loop (escape_char next :: acc) rest
     | '\\' :: [] -> failwith "Escape at end of character class"
+    | '[' :: ':' :: rest ->
+        let str, rest' = parse_posix_class_name rest in
+        let classes = posix_class_chars str in
+        loop (classes @ acc) rest'
     | ch :: '-' :: d :: rest when d <> ']' -> loop (range ch d @ acc) rest
     | ch :: rest -> loop (ch :: acc) rest
   in
   let acc, rest = loop [] chars' in
   (prefix_chars @ acc, negate, rest)
-
-let is_digit ch = ch >= '0' && ch <= '9'
 
 let parse_number chars =
   let rec loop acc chars =
