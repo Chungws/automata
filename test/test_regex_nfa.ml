@@ -94,6 +94,40 @@ let test_escape () =
   Alcotest.(check bool) "a\\.b matches a.b" true (Regex.matches "a\\.b" "a.b");
   Alcotest.(check bool) "a\\.b not matches axb" false (Regex.matches "a\\.b" "axb")
 
+let test_anchor () =
+  (* start anchor *)
+  Alcotest.(check bool) "^abc matches abc" true (Regex.matches "^abc" "abc");
+  Alcotest.(check bool) "^abc not matches xabc" false (Regex.matches "^abc" "xabc");
+  (* end anchor *)
+  Alcotest.(check bool) "abc$ matches abc" true (Regex.matches "abc$" "abc");
+  Alcotest.(check bool) "abc$ not matches abcx" false (Regex.matches "abc$" "abcx");
+  (* both anchors *)
+  Alcotest.(check bool) "^abc$ matches abc" true (Regex.matches "^abc$" "abc");
+  Alcotest.(check bool) "^abc$ not matches xabc" false (Regex.matches "^abc$" "xabc");
+  Alcotest.(check bool) "^abc$ not matches abcx" false (Regex.matches "^abc$" "abcx");
+  (* anchor with quantifiers *)
+  Alcotest.(check bool) "^a+$ matches aaa" true (Regex.matches "^a+$" "aaa");
+  Alcotest.(check bool) "^a*$ matches empty" true (Regex.matches "^a*$" "")
+
+let test_search () =
+  (* basic search - finds pattern anywhere *)
+  Alcotest.(check bool) "search abc in abc" true (Regex.search "abc" "abc");
+  Alcotest.(check bool) "search abc in xabcx" true (Regex.search "abc" "xabcx");
+  Alcotest.(check bool) "search abc in xxxabcxxx" true (Regex.search "abc" "xxxabcxxx");
+  Alcotest.(check bool) "search abc not in abd" false (Regex.search "abc" "abd");
+  (* search with start anchor *)
+  Alcotest.(check bool) "search ^abc in abc" true (Regex.search "^abc" "abc");
+  Alcotest.(check bool) "search ^abc in abcxxx" true (Regex.search "^abc" "abcxxx");
+  Alcotest.(check bool) "search ^abc not in xabc" false (Regex.search "^abc" "xabc");
+  (* search with end anchor *)
+  Alcotest.(check bool) "search abc$ in abc" true (Regex.search "abc$" "abc");
+  Alcotest.(check bool) "search abc$ in xxxabc" true (Regex.search "abc$" "xxxabc");
+  Alcotest.(check bool) "search abc$ not in abcx" false (Regex.search "abc$" "abcx");
+  (* search with both anchors *)
+  Alcotest.(check bool) "search ^abc$ in abc" true (Regex.search "^abc$" "abc");
+  Alcotest.(check bool) "search ^abc$ not in xabc" false (Regex.search "^abc$" "xabc");
+  Alcotest.(check bool) "search ^abc$ not in abcx" false (Regex.search "^abc$" "abcx")
+
 let () =
   Alcotest.run "Regex NFA"
     [
@@ -114,5 +148,7 @@ let () =
         Alcotest.test_case "dot" `Quick test_dot;
         Alcotest.test_case "char_class" `Quick test_char_class;
         Alcotest.test_case "escape" `Quick test_escape;
+        Alcotest.test_case "anchor" `Quick test_anchor;
+        Alcotest.test_case "search" `Quick test_search;
       ]);
     ]

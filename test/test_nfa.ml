@@ -15,10 +15,10 @@ let a_or_ab_nfa =
   let transitions =
     nfa_transitions_of_list
       [
-        (("q0", None), [ "q1"; "q4" ]);
-        (("q1", Some 'a'), [ "q2" ]);
-        (("q2", Some 'b'), [ "q3" ]);
-        (("q4", Some 'a'), [ "q5" ]);
+        (("q0", Nfa.Epsilon), [ "q1"; "q4" ]);
+        (("q1", Nfa.Char 'a'), [ "q2" ]);
+        (("q2", Nfa.Char 'b'), [ "q3" ]);
+        (("q4", Nfa.Char 'a'), [ "q5" ]);
       ]
   in
   Nfa.
@@ -51,7 +51,7 @@ let test_nfa_abb () =
 
 (* epsilon_closure tests *)
 let test_epsilon_closure () =
-  let result = Nfa.epsilon_closure a_or_ab_nfa (Nfa.StateSet.singleton "q0") in
+  let result = Nfa.epsilon_closure a_or_ab_nfa (Nfa.StateSet.singleton "q0") ~pos:0 ~len:0 in
   let expected = Nfa.StateSet.of_list [ "q0"; "q1"; "q4" ] in
   Alcotest.(check bool) "epsilon closure from q0" true (Nfa.StateSet.equal result expected)
 

@@ -8,6 +8,8 @@ type token =
   | TLParen
   | TRParen
   | TDot
+  | TCaret
+  | TDollar
   | TEOF
 
 let char_to_tok ch =
@@ -19,6 +21,8 @@ let char_to_tok ch =
   | '(' -> TLParen
   | ')' -> TRParen
   | '.' -> TDot
+  | '^' -> TCaret
+  | '$' -> TDollar
   | ch -> TChar ch
 
 let escape_char ch =
@@ -26,8 +30,8 @@ let escape_char ch =
 
 let parse_escape ch =
   match ch with
-  | '*' | '+' | '.' | '?' | '|' | '(' | ')' | '[' | ']' | '\\' | 'n' | 't' | 'r'
-    ->
+  | '*' | '+' | '.' | '?' | '|' | '(' | ')' | '[' | ']' | '\\' | '^' | '$' | 'n'
+  | 't' | 'r' ->
       TChar (escape_char ch)
   | _ -> failwith "Invalid Escape"
 

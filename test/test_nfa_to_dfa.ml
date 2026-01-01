@@ -17,10 +17,10 @@ let a_or_ab_nfa =
   let transitions =
     nfa_transitions_of_list
       [
-        (("q0", None), [ "q1"; "q4" ]);
-        (("q1", Some 'a'), [ "q2" ]);
-        (("q2", Some 'b'), [ "q3" ]);
-        (("q4", Some 'a'), [ "q5" ]);
+        (("q0", Nfa.Epsilon), [ "q1"; "q4" ]);
+        (("q1", Nfa.Char 'a'), [ "q2" ]);
+        (("q2", Nfa.Char 'b'), [ "q3" ]);
+        (("q4", Nfa.Char 'a'), [ "q5" ]);
       ]
   in
   Nfa.
