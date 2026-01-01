@@ -73,7 +73,26 @@ let test_char_class () =
   Alcotest.(check bool) "[^0-9] matches x" true (Regex.matches "[^0-9]" "x");
   (* combined with quantifiers *)
   Alcotest.(check bool) "[a-z]+ matches hello" true (Regex.matches "[a-z]+" "hello");
-  Alcotest.(check bool) "[a-z]+ not matches Hello" false (Regex.matches "[a-z]+" "Hello")
+  Alcotest.(check bool) "[a-z]+ not matches Hello" false (Regex.matches "[a-z]+" "Hello");
+  (* escape in char class *)
+  Alcotest.(check bool) "[\\]] matches ]" true (Regex.matches "[\\]]" "]");
+  Alcotest.(check bool) "[a\\-z] matches -" true (Regex.matches "[a\\-z]" "-");
+  Alcotest.(check bool) "[\\\\] matches \\" true (Regex.matches "[\\\\]" "\\");
+  (* literal ] and - at special positions *)
+  Alcotest.(check bool) "[]a] matches ]" true (Regex.matches "[]a]" "]");
+  Alcotest.(check bool) "[-a] matches -" true (Regex.matches "[-a]" "-");
+  Alcotest.(check bool) "[a-] matches -" true (Regex.matches "[a-]" "-")
+
+let test_escape () =
+  (* escaped metacharacters *)
+  Alcotest.(check bool) "\\. matches ." true (Regex.matches "\\." ".");
+  Alcotest.(check bool) "\\. not matches a" false (Regex.matches "\\." "a");
+  Alcotest.(check bool) "\\* matches *" true (Regex.matches "\\*" "*");
+  Alcotest.(check bool) "\\+ matches +" true (Regex.matches "\\+" "+");
+  Alcotest.(check bool) "\\\\ matches \\" true (Regex.matches "\\\\" "\\");
+  (* escape in pattern *)
+  Alcotest.(check bool) "a\\.b matches a.b" true (Regex.matches "a\\.b" "a.b");
+  Alcotest.(check bool) "a\\.b not matches axb" false (Regex.matches "a\\.b" "axb")
 
 let () =
   Alcotest.run "Regex NFA"
@@ -94,5 +113,6 @@ let () =
         Alcotest.test_case "empty" `Quick test_empty;
         Alcotest.test_case "dot" `Quick test_dot;
         Alcotest.test_case "char_class" `Quick test_char_class;
+        Alcotest.test_case "escape" `Quick test_escape;
       ]);
     ]

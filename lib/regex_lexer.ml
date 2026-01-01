@@ -21,6 +21,16 @@ let char_to_tok ch =
   | '.' -> TDot
   | ch -> TChar ch
 
+let escape_char ch =
+  match ch with 'n' -> '\n' | 't' -> '\t' | 'r' -> '\r' | c -> c
+
+let parse_escape ch =
+  match ch with
+  | '*' | '+' | '.' | '?' | '|' | '(' | ')' | '[' | ']' | '\\' | 'n' | 't' | 'r'
+    ->
+      TChar (escape_char ch)
+  | _ -> failwith "Invalid Escape"
+
 let range start_char end_char =
   List.init
     (Char.code end_char - Char.code start_char + 1)
@@ -30,7 +40,7 @@ let parse_char_class chars =
   let negate, chars' =
     match chars with '^' :: rest -> (true, rest) | _ -> (false, chars)
   in
-  let accs, chars' =
+  let prefix_chars, chars' =
     match chars' with
     | ']' :: rest -> ([ ']' ], rest)
     | '-' :: rest -> ([ '-' ], rest)
@@ -38,18 +48,22 @@ let parse_char_class chars =
   in
   let rec loop acc chars =
     match chars with
-    | [] -> failwith "Error"
+    | [] -> failwith "Unclosed character class: missing ']'"
     | ']' :: rest -> (acc, rest)
+    | '\\' :: next :: rest -> loop (escape_char next :: acc) rest
+    | '\\' :: [] -> failwith "Escape at end of character class"
     | ch :: '-' :: d :: rest when d <> ']' -> loop (range ch d @ acc) rest
     | ch :: rest -> loop (ch :: acc) rest
   in
   let acc, rest = loop [] chars' in
-  (accs @ acc, negate, rest)
+  (prefix_chars @ acc, negate, rest)
 
 let tokenize s =
   let rec loop chars =
     match chars with
     | [] -> [ TEOF ]
+    | '\\' :: next :: rest -> parse_escape next :: loop rest
+    | '\\' :: [] -> failwith "Invalid Escape"
     | '[' :: rest ->
         let chars, negated, rest' = parse_char_class rest in
         TCharClass (chars, negated) :: loop rest'

@@ -4,6 +4,8 @@ type fragment = {
   transitions : (string * char option * string) list;
 }
 
+module CharSet = Set.Make (Char)
+
 let default_alphabet =
   Regex_lexer.range 'a' 'z' @ Regex_lexer.range 'A' 'Z'
   @ Regex_lexer.range '0' '9'
@@ -24,12 +26,12 @@ let char_class_frag alphabet chars negate =
   let start = new_state () in
   let accept = new_state () in
   let transitions =
-    match negate with
-    | true ->
-        alphabet
-        |> List.filter (fun ch -> not (List.mem ch chars))
-        |> List.map (fun ch -> (start, Some ch, accept))
-    | false -> chars |> List.map (fun ch -> (start, Some ch, accept))
+    if negate then
+      let char_set = CharSet.of_list chars in
+      alphabet
+      |> List.filter (fun ch -> not (CharSet.mem ch char_set))
+      |> List.map (fun ch -> (start, Some ch, accept))
+    else chars |> List.map (fun ch -> (start, Some ch, accept))
   in
   { start; accept; transitions }
 
@@ -94,11 +96,7 @@ let option_frag a =
   in
   { start; accept; transitions }
 
-let dot_frag alphabet =
-  let start = new_state () in
-  let accept = new_state () in
-  let transitions = List.map (fun ch -> (start, Some ch, accept)) alphabet in
-  { start; accept; transitions }
+let dot_frag alphabet = char_class_frag alphabet [] true
 
 let rec ast_to_fragment ast =
   match ast with
