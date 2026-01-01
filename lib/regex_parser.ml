@@ -1,6 +1,8 @@
 let rec parse_atom (tokens : Regex_lexer.token list) =
   match tokens with
   | Regex_lexer.TChar c :: rest -> (Regex_ast.Char c, rest)
+  | Regex_lexer.TCharClass (chars, neg) :: rest ->
+      (Regex_ast.CharClass (chars, neg), rest)
   | Regex_lexer.TDot :: rest -> (Regex_ast.Dot, rest)
   | Regex_lexer.TLParen :: rest -> (
       let expr, rest' = parse_expr rest in
@@ -20,8 +22,10 @@ and parse_repeat (tokens : Regex_lexer.token list) =
 and parse_concat (tokens : Regex_lexer.token list) =
   let left, rest = parse_repeat tokens in
   match rest with
-  | Regex_lexer.TChar _ :: _ | Regex_lexer.TLParen :: _ | Regex_lexer.TDot :: _
-    ->
+  | Regex_lexer.TChar _ :: _
+  | Regex_lexer.TLParen :: _
+  | Regex_lexer.TDot :: _
+  | Regex_lexer.TCharClass _ :: _ ->
       let right, rest' = parse_concat rest in
       (Regex_ast.Concat (left, right), rest')
   | _ -> (left, rest)

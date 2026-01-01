@@ -4,12 +4,10 @@ type fragment = {
   transitions : (string * char option * string) list;
 }
 
-let range start_char end_char =
-  List.init
-    (Char.code end_char - Char.code start_char + 1)
-    (fun i -> Char.chr (Char.code start_char + i))
+let default_alphabet =
+  Regex_lexer.range 'a' 'z' @ Regex_lexer.range 'A' 'Z'
+  @ Regex_lexer.range '0' '9'
 
-let default_alphabet = range 'a' 'z' @ range 'A' 'Z' @ range '0' '9'
 let counter = ref 0
 
 let new_state () =
@@ -21,6 +19,19 @@ let char_frag ch =
   let start = new_state () in
   let accept = new_state () in
   { start; accept; transitions = [ (start, Some ch, accept) ] }
+
+let char_class_frag alphabet chars negate =
+  let start = new_state () in
+  let accept = new_state () in
+  let transitions =
+    match negate with
+    | true ->
+        alphabet
+        |> List.filter (fun ch -> not (List.mem ch chars))
+        |> List.map (fun ch -> (start, Some ch, accept))
+    | false -> chars |> List.map (fun ch -> (start, Some ch, accept))
+  in
+  { start; accept; transitions }
 
 let empty_frag () =
   let start = new_state () in
@@ -100,6 +111,8 @@ let rec ast_to_fragment ast =
   | Regex_ast.Plus a -> plus_frag (ast_to_fragment a)
   | Regex_ast.Option a -> option_frag (ast_to_fragment a)
   | Regex_ast.Group a -> ast_to_fragment a
+  | Regex_ast.CharClass (chars, negate) ->
+      char_class_frag default_alphabet chars negate
   | Regex_ast.Dot -> dot_frag default_alphabet
 
 let to_nfa frag : Nfa.t =

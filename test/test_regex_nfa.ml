@@ -58,6 +58,23 @@ let test_dot () =
   Alcotest.(check bool) ".+ matches non-empty" true (Regex.matches ".+" "x");
   Alcotest.(check bool) ".+ not matches empty" false (Regex.matches ".+" "")
 
+let test_char_class () =
+  (* basic char class *)
+  Alcotest.(check bool) "[abc] matches a" true (Regex.matches "[abc]" "a");
+  Alcotest.(check bool) "[abc] matches b" true (Regex.matches "[abc]" "b");
+  Alcotest.(check bool) "[abc] not matches d" false (Regex.matches "[abc]" "d");
+  (* range *)
+  Alcotest.(check bool) "[a-z] matches m" true (Regex.matches "[a-z]" "m");
+  Alcotest.(check bool) "[a-z] not matches M" false (Regex.matches "[a-z]" "M");
+  Alcotest.(check bool) "[0-9] matches 5" true (Regex.matches "[0-9]" "5");
+  (* negation *)
+  Alcotest.(check bool) "[^abc] matches d" true (Regex.matches "[^abc]" "d");
+  Alcotest.(check bool) "[^abc] not matches a" false (Regex.matches "[^abc]" "a");
+  Alcotest.(check bool) "[^0-9] matches x" true (Regex.matches "[^0-9]" "x");
+  (* combined with quantifiers *)
+  Alcotest.(check bool) "[a-z]+ matches hello" true (Regex.matches "[a-z]+" "hello");
+  Alcotest.(check bool) "[a-z]+ not matches Hello" false (Regex.matches "[a-z]+" "Hello")
+
 let () =
   Alcotest.run "Regex NFA"
     [
@@ -76,5 +93,6 @@ let () =
         Alcotest.test_case "complex" `Quick test_complex;
         Alcotest.test_case "empty" `Quick test_empty;
         Alcotest.test_case "dot" `Quick test_dot;
+        Alcotest.test_case "char_class" `Quick test_char_class;
       ]);
     ]
