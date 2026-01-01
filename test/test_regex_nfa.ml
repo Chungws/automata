@@ -52,7 +52,27 @@ let test_repeat () =
   Alcotest.(check bool) "(ab){2} matches abab" true (Regex.matches "(ab){2}" "abab");
   Alcotest.(check bool) "(ab){2} not matches ab" false (Regex.matches "(ab){2}" "ab");
   (* multi-digit numbers *)
-  Alcotest.(check bool) "a{10} matches 10 a's" true (Regex.matches "a{10}" "aaaaaaaaaa")
+  Alcotest.(check bool) "a{10} matches 10 a's" true (Regex.matches "a{10}" "aaaaaaaaaa");
+  (* edge cases: min=0 *)
+  Alcotest.(check bool) "a{0,2} matches empty" true (Regex.matches "a{0,2}" "");
+  Alcotest.(check bool) "a{0,2} matches a" true (Regex.matches "a{0,2}" "a");
+  Alcotest.(check bool) "a{0,2} matches aa" true (Regex.matches "a{0,2}" "aa");
+  Alcotest.(check bool) "a{0,2} not matches aaa" false (Regex.matches "a{0,2}" "aaa");
+  (* edge cases: equivalent to *, +, ? *)
+  Alcotest.(check bool) "a{0,} matches empty (like a*)" true (Regex.matches "a{0,}" "");
+  Alcotest.(check bool) "a{0,} matches aaa (like a*)" true (Regex.matches "a{0,}" "aaa");
+  Alcotest.(check bool) "a{1,} not matches empty (like a+)" false (Regex.matches "a{1,}" "");
+  Alcotest.(check bool) "a{1,} matches a (like a+)" true (Regex.matches "a{1,}" "a");
+  Alcotest.(check bool) "a{0,1} matches empty (like a?)" true (Regex.matches "a{0,1}" "");
+  Alcotest.(check bool) "a{0,1} matches a (like a?)" true (Regex.matches "a{0,1}" "a");
+  Alcotest.(check bool) "a{0,1} not matches aa (like a?)" false (Regex.matches "a{0,1}" "aa");
+  (* edge case: {0,0} *)
+  Alcotest.(check bool) "a{0,0} matches empty" true (Regex.matches "a{0,0}" "");
+  Alcotest.(check bool) "a{0,0} not matches a" false (Regex.matches "a{0,0}" "a");
+  (* multi-digit range *)
+  Alcotest.(check bool) "a{10,12} matches 10 a's" true (Regex.matches "a{10,12}" "aaaaaaaaaa");
+  Alcotest.(check bool) "a{10,12} matches 12 a's" true (Regex.matches "a{10,12}" "aaaaaaaaaaaa");
+  Alcotest.(check bool) "a{10,12} not matches 9 a's" false (Regex.matches "a{10,12}" "aaaaaaaaa")
 
 let test_group () =
   Alcotest.(check bool) "(ab)* matches empty" true (Regex.matches "(ab)*" "");
@@ -115,7 +135,10 @@ let test_escape () =
   Alcotest.(check bool) "\\\\ matches \\" true (Regex.matches "\\\\" "\\");
   (* escape in pattern *)
   Alcotest.(check bool) "a\\.b matches a.b" true (Regex.matches "a\\.b" "a.b");
-  Alcotest.(check bool) "a\\.b not matches axb" false (Regex.matches "a\\.b" "axb")
+  Alcotest.(check bool) "a\\.b not matches axb" false (Regex.matches "a\\.b" "axb");
+  (* escaped braces *)
+  Alcotest.(check bool) "\\{ matches {" true (Regex.matches "\\{" "{");
+  Alcotest.(check bool) "\\} matches }" true (Regex.matches "\\}" "}")
 
 let test_anchor () =
   (* start anchor *)
