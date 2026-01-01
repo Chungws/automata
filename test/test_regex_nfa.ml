@@ -48,6 +48,16 @@ let test_empty () =
   Alcotest.(check bool) "empty matches empty" true (Regex.matches "" "");
   Alcotest.(check bool) "empty not matches a" false (Regex.matches "" "a")
 
+let test_dot () =
+  Alcotest.(check bool) "a.c matches abc" true (Regex.matches "a.c" "abc");
+  Alcotest.(check bool) "a.c matches aXc" true (Regex.matches "a.c" "aXc");
+  Alcotest.(check bool) "a.c matches a1c" true (Regex.matches "a.c" "a1c");
+  Alcotest.(check bool) "a.c not matches ac" false (Regex.matches "a.c" "ac");
+  Alcotest.(check bool) "a.c not matches abbc" false (Regex.matches "a.c" "abbc");
+  Alcotest.(check bool) ".* matches anything" true (Regex.matches ".*" "hello");
+  Alcotest.(check bool) ".+ matches non-empty" true (Regex.matches ".+" "x");
+  Alcotest.(check bool) ".+ not matches empty" false (Regex.matches ".+" "")
+
 let () =
   Alcotest.run "Regex NFA"
     [
@@ -65,5 +75,6 @@ let () =
         Alcotest.test_case "group" `Quick test_group;
         Alcotest.test_case "complex" `Quick test_complex;
         Alcotest.test_case "empty" `Quick test_empty;
+        Alcotest.test_case "dot" `Quick test_dot;
       ]);
     ]

@@ -4,6 +4,12 @@ type fragment = {
   transitions : (string * char option * string) list;
 }
 
+let range start_char end_char =
+  List.init
+    (Char.code end_char - Char.code start_char + 1)
+    (fun i -> Char.chr (Char.code start_char + i))
+
+let default_alphabet = range 'a' 'z' @ range 'A' 'Z' @ range '0' '9'
 let counter = ref 0
 
 let new_state () =
@@ -77,6 +83,12 @@ let option_frag a =
   in
   { start; accept; transitions }
 
+let dot_frag alphabet =
+  let start = new_state () in
+  let accept = new_state () in
+  let transitions = List.map (fun ch -> (start, Some ch, accept)) alphabet in
+  { start; accept; transitions }
+
 let rec ast_to_fragment ast =
   match ast with
   | Regex_ast.Char c -> char_frag c
@@ -88,6 +100,7 @@ let rec ast_to_fragment ast =
   | Regex_ast.Plus a -> plus_frag (ast_to_fragment a)
   | Regex_ast.Option a -> option_frag (ast_to_fragment a)
   | Regex_ast.Group a -> ast_to_fragment a
+  | Regex_ast.Dot -> dot_frag default_alphabet
 
 let to_nfa frag : Nfa.t =
   let states =

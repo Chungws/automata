@@ -6,6 +6,7 @@ type token =
   | TPipe
   | TLParen
   | TRParen
+  | TDot
   | TEOF
 
 let char_to_tok ch =
@@ -16,6 +17,7 @@ let char_to_tok ch =
   | '|' -> TPipe
   | '(' -> TLParen
   | ')' -> TRParen
+  | '.' -> TDot
   | ch -> TChar ch
 
 let tokenize s =

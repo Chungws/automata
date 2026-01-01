@@ -6,4 +6,5 @@ type t =
   | Plus of t
   | Option of t
   | Group of t
+  | Dot
   | Empty
