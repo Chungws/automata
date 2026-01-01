@@ -19,6 +19,8 @@ and parse_repeat (tokens : Regex_lexer.token list) =
   | Regex_lexer.TStar :: rest' -> (Regex_ast.Star atom, rest')
   | Regex_lexer.TPlus :: rest' -> (Regex_ast.Plus atom, rest')
   | Regex_lexer.TQuestion :: rest' -> (Regex_ast.Option atom, rest')
+  | Regex_lexer.TRepeat (min, max) :: rest' ->
+      (Regex_ast.Repeat (atom, min, max), rest')
   | _ -> (atom, rest)
 
 and parse_concat (tokens : Regex_lexer.token list) =

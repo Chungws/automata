@@ -10,6 +10,7 @@ type token =
   | TDot
   | TCaret
   | TDollar
+  | TRepeat of int * int option
   | TEOF
 
 let char_to_tok ch =
@@ -30,8 +31,8 @@ let escape_char ch =
 
 let parse_escape ch =
   match ch with
-  | '*' | '+' | '.' | '?' | '|' | '(' | ')' | '[' | ']' | '\\' | '^' | '$' | 'n'
-  | 't' | 'r' ->
+  | '*' | '+' | '.' | '?' | '|' | '(' | ')' | '{' | '}' | '[' | ']' | '\\' | '^'
+  | '$' | 'n' | 't' | 'r' ->
       TChar (escape_char ch)
   | _ -> failwith "Invalid Escape"
 
@@ -62,6 +63,30 @@ let parse_char_class chars =
   let acc, rest = loop [] chars' in
   (prefix_chars @ acc, negate, rest)
 
+let is_digit ch = ch >= '0' && ch <= '9'
+
+let parse_number chars =
+  let rec loop acc chars =
+    match chars with
+    | n :: rest when is_digit n ->
+        let num = Char.code n - Char.code '0' in
+        loop ((acc * 10) + num) rest
+    | _ -> (acc, chars)
+  in
+  loop 0 chars
+
+let parse_repeat chars =
+  let min, rest = parse_number chars in
+  match rest with
+  | '}' :: rest -> (min, Some min, rest)
+  | ',' :: '}' :: rest -> (min, None, rest)
+  | ',' :: rest -> (
+      let max, rest' = parse_number rest in
+      match rest' with
+      | '}' :: rest'' -> (min, Some max, rest'')
+      | _ -> failwith "Unclosed repeats: missing '}'")
+  | _ -> failwith "Invalid repeats"
+
 let tokenize s =
   let rec loop chars =
     match chars with
@@ -71,6 +96,9 @@ let tokenize s =
     | '[' :: rest ->
         let chars, negated, rest' = parse_char_class rest in
         TCharClass (chars, negated) :: loop rest'
+    | '{' :: rest ->
+        let min, max, rest' = parse_repeat rest in
+        TRepeat (min, max) :: loop rest'
     | c :: rest -> char_to_tok c :: loop rest
   in
   loop (s |> String.to_seq |> List.of_seq)

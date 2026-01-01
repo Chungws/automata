@@ -8,5 +8,6 @@ type t =
   | Plus of t
   | Option of t
   | Group of t
+  | Repeat of t * int * int option
   | Dot
   | Empty

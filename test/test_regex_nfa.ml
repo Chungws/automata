@@ -31,6 +31,29 @@ let test_option () =
   Alcotest.(check bool) "a? matches a" true (Regex.matches "a?" "a");
   Alcotest.(check bool) "a? not matches aa" false (Regex.matches "a?" "aa")
 
+let test_repeat () =
+  (* exact count {n} *)
+  Alcotest.(check bool) "a{3} matches aaa" true (Regex.matches "a{3}" "aaa");
+  Alcotest.(check bool) "a{3} not matches aa" false (Regex.matches "a{3}" "aa");
+  Alcotest.(check bool) "a{3} not matches aaaa" false (Regex.matches "a{3}" "aaaa");
+  Alcotest.(check bool) "a{0} matches empty" true (Regex.matches "a{0}" "");
+  Alcotest.(check bool) "a{1} matches a" true (Regex.matches "a{1}" "a");
+  (* range {n,m} *)
+  Alcotest.(check bool) "a{2,4} matches aa" true (Regex.matches "a{2,4}" "aa");
+  Alcotest.(check bool) "a{2,4} matches aaa" true (Regex.matches "a{2,4}" "aaa");
+  Alcotest.(check bool) "a{2,4} matches aaaa" true (Regex.matches "a{2,4}" "aaaa");
+  Alcotest.(check bool) "a{2,4} not matches a" false (Regex.matches "a{2,4}" "a");
+  Alcotest.(check bool) "a{2,4} not matches aaaaa" false (Regex.matches "a{2,4}" "aaaaa");
+  (* unbounded {n,} *)
+  Alcotest.(check bool) "a{2,} matches aa" true (Regex.matches "a{2,}" "aa");
+  Alcotest.(check bool) "a{2,} matches aaaaa" true (Regex.matches "a{2,}" "aaaaa");
+  Alcotest.(check bool) "a{2,} not matches a" false (Regex.matches "a{2,}" "a");
+  (* with groups *)
+  Alcotest.(check bool) "(ab){2} matches abab" true (Regex.matches "(ab){2}" "abab");
+  Alcotest.(check bool) "(ab){2} not matches ab" false (Regex.matches "(ab){2}" "ab");
+  (* multi-digit numbers *)
+  Alcotest.(check bool) "a{10} matches 10 a's" true (Regex.matches "a{10}" "aaaaaaaaaa")
+
 let test_group () =
   Alcotest.(check bool) "(ab)* matches empty" true (Regex.matches "(ab)*" "");
   Alcotest.(check bool) "(ab)* matches ab" true (Regex.matches "(ab)*" "ab");
@@ -140,6 +163,7 @@ let () =
         Alcotest.test_case "star" `Quick test_star;
         Alcotest.test_case "plus" `Quick test_plus;
         Alcotest.test_case "option" `Quick test_option;
+        Alcotest.test_case "repeat" `Quick test_repeat;
       ]);
       ("advanced", [
         Alcotest.test_case "group" `Quick test_group;

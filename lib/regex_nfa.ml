@@ -101,6 +101,27 @@ let option_frag a =
   in
   { start; accept; transitions }
 
+let rec repeat_n factory n =
+  match n with
+  | 0 -> empty_frag ()
+  | 1 -> factory ()
+  | _ -> concat_frag (factory ()) (repeat_n factory (n - 1))
+
+let rec repeat_optional factory n =
+  match n with
+  | 0 -> empty_frag ()
+  | _ ->
+      concat_frag (option_frag (factory ())) (repeat_optional factory (n - 1))
+
+let repeat_frag factory min max =
+  let min_a = repeat_n factory min in
+  let max_a =
+    match max with
+    | Some m -> repeat_optional factory (m - min)
+    | None -> star_frag (factory ())
+  in
+  concat_frag min_a max_a
+
 let dot_frag alphabet = char_class_frag alphabet [] true
 let anchor_frag anchor = simple_frag anchor
 
@@ -114,6 +135,8 @@ let rec ast_to_fragment ast =
   | Regex_ast.Star a -> star_frag (ast_to_fragment a)
   | Regex_ast.Plus a -> plus_frag (ast_to_fragment a)
   | Regex_ast.Option a -> option_frag (ast_to_fragment a)
+  | Regex_ast.Repeat (a, min, max) ->
+      repeat_frag (fun () -> ast_to_fragment a) min max
   | Regex_ast.Group a -> ast_to_fragment a
   | Regex_ast.CharClass (chars, negate) ->
       char_class_frag default_alphabet chars negate
