@@ -76,17 +76,17 @@ let test_parse_option () =
 
 let test_parse_group () =
   let ast = Parser.parse "(a)" in
-  Alcotest.(check bool) "group" true (ast = Ast.Char 'a')
+  Alcotest.(check bool) "group" true (ast = Ast.Group (1, Ast.Char 'a'))
 
 let test_parse_group_alt () =
   let ast = Parser.parse "(a|b)*" in
-  let expected = Ast.Star (Ast.Alt (Ast.Char 'a', Ast.Char 'b')) in
+  let expected = Ast.Star (Ast.Group (1, Ast.Alt (Ast.Char 'a', Ast.Char 'b'))) in
   Alcotest.(check bool) "group alt star" true (ast = expected)
 
 let test_parse_complex () =
   (* (a|b)*abb *)
   let ast = Parser.parse "(a|b)*abb" in
-  let ab = Ast.Alt (Ast.Char 'a', Ast.Char 'b') in
+  let ab = Ast.Group (1, Ast.Alt (Ast.Char 'a', Ast.Char 'b')) in
   let expected = Ast.Concat (
     Ast.Star ab,
     Ast.Concat (Ast.Char 'a',

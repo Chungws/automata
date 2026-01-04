@@ -7,7 +7,8 @@ type t =
   | Star of t
   | Plus of t
   | Option of t
-  | Group of t
+  | Group of int * t
   | Repeat of t * int * int option
   | Dot
+  | Backref of int
   | Empty

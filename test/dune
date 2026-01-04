@@ -17,3 +17,7 @@
 (test
  (name test_regex_nfa)
  (libraries automata alcotest))
+
+(test
+ (name test_regex_bt)
+ (libraries automata alcotest))

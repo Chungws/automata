@@ -137,12 +137,13 @@ let rec ast_to_fragment ast =
   | Regex_ast.Option a -> option_frag (ast_to_fragment a)
   | Regex_ast.Repeat (a, min, max) ->
       repeat_frag (fun () -> ast_to_fragment a) min max
-  | Regex_ast.Group a -> ast_to_fragment a
+  | Regex_ast.Group (_, a) -> ast_to_fragment a
   | Regex_ast.CharClass (chars, negate) ->
       char_class_frag default_alphabet chars negate
   | Regex_ast.Dot -> dot_frag default_alphabet
   | Regex_ast.Anchor `Start -> anchor_frag Nfa.StartAnchor
   | Regex_ast.Anchor `End -> anchor_frag Nfa.EndAnchor
+  | Regex_ast.Backref _ -> failwith "NFA does not support backreferences"
 
 let to_nfa frag : Nfa.t =
   let states =
@@ -190,7 +191,7 @@ let has_anchor which ast =
     | Regex_ast.Anchor a when a = which -> true
     | Regex_ast.Concat (a, b) -> check (if which = `Start then a else b)
     | Regex_ast.Alt (a, b) -> check a && check b
-    | Regex_ast.Group a -> check a
+    | Regex_ast.Group (_, a) -> check a
     | _ -> false
   in
   check ast

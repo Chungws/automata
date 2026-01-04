@@ -11,6 +11,7 @@ type token =
   | TCaret
   | TDollar
   | TRepeat of int * int option
+  | TBackref of int
   | TEOF
 
 let char_to_tok ch =
@@ -46,6 +47,7 @@ let parse_escape ch =
   | '*' | '+' | '.' | '?' | '|' | '(' | ')' | '{' | '}' | '[' | ']' | '\\' | '^'
   | '$' | 'n' | 't' | 'r' ->
       TChar (escape_char ch)
+  | '1' .. '9' -> TBackref (Char.code ch - Char.code '0')
   | _ -> failwith "Invalid Escape"
 
 let parse_posix_class_name chars =
