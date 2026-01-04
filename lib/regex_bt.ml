@@ -68,3 +68,69 @@ let match_groups pattern text =
   let ast = Regex_parser.parse pattern in
   let try_match = make_matcher text in
   try_match ast 0 [] |> List.find_opt (fun (p, _) -> p = len) |> Option.map snd
+
+let search pattern text =
+  let len = String.length text in
+  let ast = Regex_parser.parse pattern in
+  let try_match = make_matcher text in
+  let rec try_form pos =
+    if pos > len then false
+    else if try_match ast pos [] <> [] then true
+    else try_form (pos + 1)
+  in
+  try_form 0
+
+let find_match pattern text =
+  let len = String.length text in
+  let ast = Regex_parser.parse pattern in
+  let try_match = make_matcher text in
+  let rec try_form pos =
+    if pos > len then None
+    else
+      let res = try_match ast pos [] in
+      if res <> [] then
+        let best =
+          List.fold_left
+            (fun acc (end_pos, caps) ->
+              match acc with
+              | None -> Some (end_pos, caps)
+              | Some (best_end, _) ->
+                  if end_pos > best_end then Some (end_pos, caps) else acc)
+            None res
+        in
+        match best with
+        | Some (end_pos, caps) -> Some (pos, end_pos, caps)
+        | None -> try_form (pos + 1)
+      else try_form (pos + 1)
+  in
+  try_form 0
+
+let parse_escape ch =
+  match ch with '1' .. '9' -> Some (Char.code ch - Char.code '0') | _ -> None
+
+let expand_captures replacement captures text =
+  let len = String.length replacement in
+  let rec loop i acc =
+    if i >= len then acc
+    else if i < len - 1 && replacement.[i] = '\\' then
+      match parse_escape replacement.[i + 1] with
+      | Some n ->
+          let captured =
+            match List.assoc_opt n captures with
+            | Some (s, e) -> String.sub text s (e - s)
+            | None -> ""
+          in
+          loop (i + 2) (acc ^ captured)
+      | None -> loop (i + 1) (acc ^ String.make 1 replacement.[i])
+    else loop (i + 1) (acc ^ String.make 1 replacement.[i])
+  in
+  loop 0 ""
+
+let replace pattern replacement text =
+  let len = String.length text in
+  match find_match pattern text with
+  | None -> text
+  | Some (start, end_pos, captures) ->
+      let expanded = expand_captures replacement captures text in
+      String.sub text 0 start ^ expanded
+      ^ String.sub text end_pos (len - end_pos)

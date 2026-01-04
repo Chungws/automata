@@ -235,3 +235,31 @@ let search pattern text =
   in
   let nfa = to_nfa with_suffix in
   Nfa.accepts nfa text
+
+let find_match pattern text =
+  let len = String.length text in
+  let rec find_start start =
+    if start >= len then None
+    else
+      let rec find_end end_pos last_match =
+        if end_pos > len then last_match
+        else
+          let sub = String.sub text start (end_pos - start) in
+          let new_match =
+            if matches pattern sub then Some (start, end_pos) else last_match
+          in
+          find_end (end_pos + 1) new_match
+      in
+      match find_end (start + 1) None with
+      | Some _ as result -> result
+      | None -> find_start (start + 1)
+  in
+  find_start 0
+
+let replace pattern replacement text =
+  let len = String.length text in
+  match find_match pattern text with
+  | None -> text
+  | Some (start, end_pos) ->
+      String.sub text 0 start ^ replacement
+      ^ String.sub text end_pos (len - end_pos)
