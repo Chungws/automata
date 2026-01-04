@@ -2,3 +2,7 @@
  (name main)
  (public_name automata)
  (libraries automata))
+
+(executable
+ (name redos_test)
+ (libraries automata))
