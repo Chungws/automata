@@ -21,3 +21,7 @@
 (test
  (name test_regex_bt)
  (libraries automata alcotest))
+
+(test
+ (name test_regex)
+ (libraries automata alcotest))
