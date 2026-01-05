@@ -25,3 +25,7 @@
 (test
  (name test_regex)
  (libraries automata alcotest))
+
+(test
+ (name test_turing)
+ (libraries automata alcotest))
